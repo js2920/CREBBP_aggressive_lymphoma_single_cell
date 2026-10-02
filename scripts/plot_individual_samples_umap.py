@@ -7,8 +7,6 @@ Plot Individual Samples on UMAP
 Loads the integrated AnnData and creates individual UMAP plots
 highlighting each sample while showing others in gray.
 
-Author: J
-Date: 2025-12-11
 """
 
 import re
