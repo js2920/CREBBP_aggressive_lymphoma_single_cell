@@ -13,8 +13,6 @@ Generates:
 
 Outputs saved as PNG, SVG, and PDF.
 
-Author: J
-Date: 2025-12-02
 """
 
 import os
