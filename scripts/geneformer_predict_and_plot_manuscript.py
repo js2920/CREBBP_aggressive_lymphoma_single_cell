@@ -7,11 +7,7 @@ This script:
 1. Loads the CellBender-filtered mouse data (with scVI integration)
 2. Predicts cell types using the pre-trained 48-class Geneformer model
 3. Generates publication-quality visualizations
-4. Saves all outputs to the MANUSCRIPT folder
 
-Author: J
-Date: 2025-12-01
-"""
 
 import sys
 import os
