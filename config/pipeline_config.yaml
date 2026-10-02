@@ -1,0 +1,122 @@
+# ==============================================================================
+# CREBBP Aggressive Lymphoma Single-Cell Analysis Pipeline Configuration
+# ==============================================================================
+
+pipeline:
+  name: "CREBBP_aggressive_lymphoma_single_cell"
+  version: "1.0.0"
+  random_seed: 0
+  num_threads: 4
+
+paths:
+  # Base directory: if empty, defaults to repository root
+  base_dir: ""
+  data_dir: "data"
+  cellbender_dir: "data/cellbender_filtered"
+  dlbcl_dir: "data/DLBCL"
+  tonsil_dir: "data/tonsil_export"
+  model_dir: "models/geneformer_tonsil_multi"
+  fastq_root: "data/raw_fastq"
+  cellranger_ref: "data/refdata-gex-GRCm39-2024-A"
+
+outputs:
+  stage1_dir: "mouse_scvi_cytotrace2"
+  stage2_dir: "Geneformer"
+  stage3_dir: "mouse_human_integration"
+  stage4_dir: "heatmap_programs"
+  stage5a_dir: "pgc1_cytotrace2_trajectory"
+  stage5b_dir: "wilcoxon_rank_sum"
+
+stage0_cellranger:
+  binary: "cellranger"
+  localcores: 28
+  localmem: 128
+  chemistry: "auto"
+
+stage1_mouse_scvi:
+  qc:
+    max_mitochondrial_percent: 10.0
+    min_genes_per_cell: 200
+    min_cells_per_gene: 3
+    filter_confounders: true  # removes mitochondrial, ribosomal, and V(D)J genes from HVG
+  scrublet:
+    expected_doublet_rate: 0.06
+    sim_doublet_ratio: 2.0
+    n_neighbors: 30
+  hvg:
+    n_top_genes: 3000
+    flavor: "seurat_v3"
+    batch_key: "sample_id"
+  scvi:
+    n_latent: 30
+    n_layers: 2
+    n_hidden: 128
+    dropout_rate: 0.1
+    dispersion: "gene"
+    gene_likelihood: "nb"
+    max_epochs: 400
+    early_stopping: true
+    train_size: 0.9
+  leiden:
+    resolutions: [0.3, 0.5, 0.8, 1.0, 1.2]
+    default_resolution: 0.5
+  cytotrace2:
+    species: "mouse"
+    batch_size: 10000
+
+stage2_geneformer:
+  pretrained_model: "ctheodoris/Geneformer"
+  max_input_length: 2048
+  n_classes: 48
+  training:
+    learning_rate: 5.0e-5
+    batch_size: 12
+    epochs: 3
+    weight_decay: 0.01
+    warmup_ratio: 0.1
+    evaluation_strategy: "epoch"
+    save_strategy: "epoch"
+    metric_for_best_model: "eval_f1_macro"
+
+stage3_cross_species:
+  orthology:
+    source: "biomart_one2one"
+    fallback: "mgi_hom_report"
+    homolog_type: "ortholog_one2one"
+  tonsil_atlas:
+    max_cells: 50000
+    cell_types: ["GCBC", "NBC", "MBC"]
+    filter_proliferating: true
+  scvi:
+    n_latent: 30
+    categorical_covariates: ["species", "dataset", "sample_id"]
+    continuous_covariates: ["pct_counts_mt"]
+    gene_likelihood: "nb"
+    max_epochs: 400
+
+stage4_trajectory_programs:
+  magic_imputation:
+    enabled: true
+    t: 3
+    knn: 10
+  pseudotime:
+    axis: "CytoTRACE2_Score"
+    n_bins: 50
+    smooth_sigma: 1.5
+  correlation:
+    metric: "spearman"
+    min_abs_corr: 0.20
+    p_value_threshold: 0.05
+  clustering:
+    metric: "dual_metric"
+    alpha_shape: 0.5  # weighting between profile correlation distance and peak-timing distance
+    k_min: 5
+    k_max: 20
+
+stage5_differential_expression:
+  wilcoxon:
+    tie_correction: true
+    fdr_method: "benjamini-hochberg"
+    fdr_threshold: 0.05
+    min_pct: 0.10
+    min_log2fc: 0.25
