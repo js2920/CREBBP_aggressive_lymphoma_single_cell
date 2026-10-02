@@ -12,8 +12,6 @@ I/O:
 - Input  H5AD: /home/gusti/CREBBP_aggressive_lymphoma_single_cell/Geneformer/mouse_with_geneformer_predictions.h5ad
 - Output dir : /home/gusti/CREBBP_aggressive_lymphoma_single_cell/heatmap_programs
 
-Author: J
-Updated: 2025-12-02
 """
 
 # =========================== HARD-CODED SETTINGS ==============================
