@@ -10,11 +10,8 @@ This script:
 1. Loads the integrated scVI data (for cell IDs and UMAP coords)
 2. Streams source data to CT2 input file (never loads all genes at once)
 3. Runs CytoTRACE2
-4. Generates publication-quality visualizations
+4. Generates  visualizations
 
-Author: J
-Date: 2025-12-11
-"""
 
 import os
 os.environ["OMP_NUM_THREADS"] = "4"
