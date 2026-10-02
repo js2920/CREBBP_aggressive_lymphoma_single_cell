@@ -11,8 +11,6 @@ This script analyzes CytoTRACE2 scores stratified by:
 
 Helps determine if specific tonsil populations drive the high CT2 scores.
 
-Author: J
-Date: 2025-12-11
 """
 
 import os
