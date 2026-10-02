@@ -6,14 +6,12 @@ Geneformer Prediction for Human DLBCL + Mouse Malignant + Tonsil Integration
 This script:
 1. Loads the integrated human DLBCL + mouse malignant + tonsil data (with scVI)
 2. Predicts cell types using the pre-trained 48-class Geneformer model
-3. Generates publication-quality visualizations
+3. Generates  visualizations
 4. Saves all outputs to the Geneformer subfolder
 
 Note: Both human and mouse data have already been converted to human gene symbols
       in the integration script (mouse via BioMart 1:1 orthologs).
 
-Author: J
-Date: 2025-12-11
 """
 
 import sys
