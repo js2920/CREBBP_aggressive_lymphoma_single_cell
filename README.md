@@ -83,16 +83,34 @@ The end-to-end analytical pipeline is structured into six modular stages:
 ├── data/
 │   └── DATA_MANIFEST.md           # Dataset manifests, GEO accessions, and reference sources
 │
-├── scripts/                       # 26 standalone, modular analysis scripts
-│   ├── run_smoke_test.py          # Synthetic dataset end-to-end pipeline validation
-│   ├── mouse_scvi_cytotrace2_cellbender.py
-│   ├── scvi_human_dlbcl_mouse_malignant_integration.py
-│   ├── ordering_cytotrace_2_mouse_geneformer.py
-│   ├── train_geneformer_tonsil_multi.py
+├── scripts/                       # 26 analysis scripts + 1 synthetic smoke test
+│   ├── cellranger_shabanas_gex.sh
+│   ├── convert_human_mouse_integration_to_seurat5.R
+│   ├── cytotrace2_dlbcl_mouse_tonsil.py
+│   ├── downstream_plots_human_mouse_integration.py
 │   ├── geneformer_predict_and_plot_manuscript.py
+│   ├── geneformer_predict_dlbcl_mouse_tonsil.py
+│   ├── generate_public_gene_set_scores_mouse.py
+│   ├── gsea_umap_ppargc1a_A.py
+│   ├── gsea_umap_ppargc1a_B.py
+│   ├── mouse_scvi_cytotrace2_cellbender.py
+│   ├── ordering_cytotrace_2_mouse_geneformer.py
 │   ├── pgc1_cytotrace2_trajectory.py
-│   ├── wilcoxon_rank_mouse_integrated.py
-│   └── convert_human_mouse_integration_to_seurat5.R
+│   ├── plot_cytotrace2_downstream.py
+│   ├── plot_cytotrace2_on_scvi_umap.py
+│   ├── plot_cytotrace2_stratified_by_tonsil_subtype.py
+│   ├── plot_gsea_custom.py
+│   ├── plot_gsea_custom_B.py
+│   ├── plot_individual_samples_umap.py
+│   ├── plot_umap_confidence.py
+│   ├── plot_umap_highlight_clusters_4_6.py
+│   ├── plot_umap_highlight_mouse_clusters_4_6.py
+│   ├── plot_umap_leiden_majority_confidence.py
+│   ├── plot_umap_leiden_majority_confidence_by_condition.py
+│   ├── run_smoke_test.py
+│   ├── scvi_human_dlbcl_mouse_malignant_integration.py
+│   ├── train_geneformer_tonsil_multi.py
+│   └── wilcoxon_rank_mouse_integrated.py
 │
 └── tests/
     └── test_pipeline_unit.py      # Unit test suite for QC, distances, correlations, and statistics
