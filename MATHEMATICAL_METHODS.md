@@ -1,6 +1,6 @@
 # Mathematical Methods and Analytical Formulations
 
-This document provides a concise, formal specification of the mathematical models, statistical formulations, and analytical assumptions implemented across the *Crebbp*-deficient aggressive B-cell lymphoma single-cell analysis pipeline.
+This document provides specifications of the mathematical models, statistical formulations, and analytical assumptions implemented across the *Crebbp*-deficient aggressive B-cell lymphoma single-cell analysis pipeline.
 
 ---
 
@@ -21,7 +21,7 @@ The murine single-cell RNA sequencing cohort comprises ten discrete libraries sp
 
 The computational workflow consists of four interconnected modeling domains:
 1. **Count Decontamination & Latent Space Inference**: Ambient RNA clearance (CellBender) and deep generative variational inference (scVI) to resolve non-linear transcriptional manifolds.
-2. **Cross-Species Reference Alignment**: Reciprocal orthology mapping bridging murine lymphoma transcriptomes with human DLBCL patient profiles and healthy reactive tonsil B cell populations.
+2. **Cross-Species Reference Alignment**: Reciprocal orthology mapping bridging murine lymphoma transcriptomes with human DLBCL patient profiles and healthy reactive tonsil B-cell populations.
 3. **Differentiation Potency Modeling**: Computational scoring of developmental arrest and stem-like plasticity using graph diffusion (CytoTRACE2).
 4. **Dynamic Gene Program Discovery**: Trajectory-aligned feature selection, Markov affinity graph denoising (MAGIC), and dual-metric hierarchical clustering to isolate condition-specific transcriptional programs.
 
@@ -40,7 +40,7 @@ $$
 where $z_{cg}$ represents the true intracellular transcriptional signal and $a_{cg}$ represents ambient background contamination:
 
 $$
-a_{cg} \sim \operatorname{Poisson}(\rho_c^{\mathrm{amb}} \cdot \chi_g)
+a_{cg} \sim \mathrm{Poisson}(\rho_c^{\mathrm{amb}} \cdot \chi_g)
 $$
 
 with droplet ambient scale parameter $\rho_c^{\mathrm{amb}}$ and ambient gene profile distribution $\chi_g$. The clean decontaminated count matrix is derived from the posterior expectation:
@@ -55,12 +55,15 @@ These background-corrected counts populate `layers['counts']` as raw integer-lik
 
 Cellular barcodes are filtered to remove non-viable cells, broken droplets, and multi-cell multiplets:
 - **Gene complexity**: Minimum of $N_{\mathrm{genes}} \ge 200$ distinct detected genes per cell barcode.
-- **Mitochondrial count fraction**: Maximum mitochondrial threshold:
-  $$
-  \mathrm{pct\_MT}_c = \frac{\sum_{g \in \mathcal{G}_{\mathrm{MT}}} x_{cg}}{\sum_g x_{cg}} \times 100 \le 10.0\%
-  $$
+- **Mitochondrial count fraction**: Maximum mitochondrial threshold $\le 10.0\%$.
 - **Multiplet removal**: Scrublet detects artificial transcriptomic doublets using simulated homotypic/heterotypic doublets, flagging droplets exceeding an expected doublet rate of 0.06.
 - **Gene prevalence**: Genes must be detected in at least $N_{\mathrm{cells}} \ge 3$ cells across the cohort.
+
+The mitochondrial count percentage for cell barcode $c$ is evaluated as:
+
+$$
+\mathrm{pct}_{\mathrm{MT}, c} = \frac{\sum_{g \in \mathcal{G}_{\mathrm{MT}}} x_{cg}}{\sum_g x_{cg}} \times 100 \le 10.0\%
+$$
 
 ### 2.3 Library Size Normalization and Transformation
 
@@ -75,7 +78,7 @@ $$
 To identify biologically informative manifold axes, 5,000 highly variable genes (HVGs) are selected using the `seurat_v3` variance-stabilizing transformation across batch strata:
 
 $$
-\sigma^2_g = \operatorname{Var}_{\mathrm{norm}}(x_{\cdot g})
+\sigma^2_g = \mathrm{Var}_{\mathrm{norm}}(x_{\cdot g})
 $$
 
 To prevent technical artifacts and non-malignant lineage dynamics from confounding manifold construction, a confounder mask $\mathcal{M}_{\mathrm{conf}}$ excludes:
@@ -95,7 +98,7 @@ The retained HVG set $\mathcal{H} = \mathcal{G}_{\mathrm{HVG}} \setminus \mathca
 scVI models count variation using a deep generative framework parameterized by neural networks. For cell $c$ and gene $g \in \mathcal{H}$, the observed count $x_{cg}$ follows a Negative Binomial distribution:
 
 $$
-x_{cg} \mid \mathbf{z}_c, L_c, b_c, \mathbf{u}_c \sim \operatorname{NB}(\mu_{cg}, \theta_{g,b_c})
+x_{cg} \mid \mathbf{z}_c, L_c, b_c, \mathbf{u}_c \sim \mathrm{NB}(\mu_{cg}, \theta_{g,b_c})
 $$
 
 The expected count $\mu_{cg}$ couples total library size $L_c$ with the normalized gene rate $\rho_{cg}$:
@@ -107,7 +110,7 @@ $$
 with variance function:
 
 $$
-\operatorname{Var}(x_{cg} \mid \mathbf{z}_c, L_c, b_c, \mathbf{u}_c) = \mu_{cg} + \frac{\mu_{cg}^2}{\theta_{g,b_c}}
+\mathrm{Var}(x_{cg} \mid \mathbf{z}_c, L_c, b_c, \mathbf{u}_c) = \mu_{cg} + \frac{\mu_{cg}^2}{\theta_{g,b_c}}
 $$
 
 where:
@@ -122,7 +125,7 @@ where:
 The posterior distribution over latent variables $p(\mathbf{z}_c \mid \mathbf{x}_c, b_c, \mathbf{u}_c)$ is approximated using a variational inference encoder network:
 
 $$
-q_\phi(\mathbf{z}_c \mid \mathbf{x}_c, b_c, \mathbf{u}_c) = \mathcal{N}\left(\boldsymbol{\mu}_\phi(\mathbf{x}_c), \operatorname{diag}\left(\boldsymbol{\sigma}_\phi^2(\mathbf{x}_c)\right)\right)
+q_\phi(\mathbf{z}_c \mid \mathbf{x}_c, b_c, \mathbf{u}_c) = \mathcal{N}\left(\boldsymbol{\mu}_\phi(\mathbf{x}_c), \mathrm{diag}\left(\boldsymbol{\sigma}_\phi^2(\mathbf{x}_c)\right)\right)
 $$
 
 Model parameters $(\theta, \phi)$ are trained jointly by maximizing the Evidence Lower Bound (ELBO):
@@ -173,13 +176,13 @@ Where Ensembl queries encounter network latency, the MGI vertebrate homology rep
 Shared highly variable genes are identified by intersecting genes exhibiting high variance across both murine and human datasets:
 
 $$
-\mathcal{H}_{\mathrm{shared}} = \left\{ g \in \mathcal{G}_{\mathrm{orth}} \;\middle|\; \sum_{d=1}^D \mathbb{I}\left(g \in \mathrm{HVG}_d\right) \ge 2 \right\}
+\mathcal{H}_{\mathrm{shared}} = \left\lbrace g \in \mathcal{G}_{\mathrm{orth}} \mid \sum_{d=1}^D \mathbb{I}(g \in \mathrm{HVG}_d) \ge 2 \right\rbrace
 $$
 
 A joint scVI variational autoencoder integrates mouse lymphoma, human DLBCL (primary clinical biopsies), and healthy human tonsil GC B cells using a nested batch key:
 
 $$
-\mathbf{s}_c = \left[\mathrm{sample\_batch}_c, \, \mathrm{species}_c\right]
+\mathbf{s}_c = [\mathbf{s}_c^{\mathrm{batch}}, \; \mathbf{s}_c^{\mathrm{species}}]
 $$
 
 This formulation models technical batch and species divergence while aligning shared biological cell states along the common 96-dimensional manifold $\mathbf{z}_c$.
@@ -236,9 +239,9 @@ $$
 
 making the input robust to variation in technical sequencing depth. The sequence is truncated to the model context length of $M = 2,048$ tokens.
 
-### 6.2 Fine-Tuning on Tonsil Reference States
+### 6.2 Fine-Tuning on Tonsil B and Plasma cell Reference States
 
-A pre-trained 6-layer transformer is fine-tuned for cell state classification using annotated human tonsil germinal center B cells (dark zone centroblasts, light zone centrocytes, memory B cells, and plasma cells). The classification objective optimizes cross-entropy loss:
+A pre-trained 6-layer transformer is fine-tuned for cell state classification using annotated human tonsil B cells (dark zone centroblasts, light zone centrocytes, memory B cells, and plasma cells). The classification objective optimizes cross-entropy loss:
 
 $$
 \mathcal{L}_{\mathrm{CE}} = - \frac{1}{N} \sum_{i=1}^N \sum_{k=1}^K y_{ik} \log p_{ik}
@@ -260,7 +263,7 @@ $$
 C_c = \max_k p_{ck}
 $$
 
-High-confidence predictions ($C_c \ge 0.70$) define cells exhibiting confident phenotypic alignment with canonical germinal center maturation compartments.
+High-confidence predictions ($C_c \ge 0.70$) define cells exhibiting confident phenotypic alignment with canonical maturation compartments.
 
 ---
 
@@ -270,20 +273,31 @@ High-confidence predictions ($C_c \ge 0.70$) define cells exhibiting confident p
 
 To isolate gene programs whose dynamics are modulated by *Crebbp* loss, features are selected based on both overall potency correlation and condition-specific interaction:
 
-1. **Baseline filter**: Retain genes with detection fraction $\ge 3\%$ and mean normalized expression $\ge 0.05$ CP10k.
-2. **Global potency correlation**:
-   $$
-   r_g = \operatorname{Spearman}\left(\{y_{cg}\}_{c=1}^N, \{q_c\}_{c=1}^N\right)
-   $$
-3. **Condition-interaction score**: Within each condition $k \in \mathcal{K}$ containing $\ge 10$ cells, compute within-condition correlation $r_{gk} = \operatorname{Spearman}(y_{cg}^{(k)}, q_c^{(k)})$. The interaction score $I_g$ measures divergence across conditions:
-   $$
-   I_g = \sqrt{\frac{1}{K_g} \sum_{k=1}^{K_g} \left( r_{gk} - \overline{r}_g \right)^2}, \quad \overline{r}_g = \frac{1}{K_g} \sum_{k=1}^{K_g} r_{gk}
-   $$
-4. **Composite ranking score**: Min-max normalized global correlation $\mathcal{N}(|r_g|)$ and interaction score $\mathcal{N}(I_g)$ are combined:
-   $$
-   A_g = 0.5 \cdot \mathcal{N}(|r_g|) + 0.5 \cdot \mathcal{N}(I_g)
-   $$
-   The top candidate genes ($N = 3,000$) proceed to trajectory profile construction.
+**1. Baseline Filter:**
+Genes are retained with detection fraction $\ge 3\%$ and mean normalized expression $\ge 0.05$ CP10k.
+
+**2. Global Potency Correlation:**
+The correlation of gene expression along the CytoTRACE2 potency coordinate $q$ is computed as:
+
+$$
+r_g = \mathrm{Spearman}\left(\{y_{cg}\}_{c=1}^N, \{q_c\}_{c=1}^N\right)
+$$
+
+**3. Condition-Interaction Score:**
+Within each condition $k \in \mathcal{K}$ containing at least 10 cells, the within-condition Spearman correlation $r_{gk}$ is computed. The interaction score $I_g$ measures divergence across conditions:
+
+$$
+I_g = \sqrt{\frac{1}{K_g} \sum_{k=1}^{K_g} (r_{gk} - \bar{r}_g)^2}, \quad \bar{r}_g = \frac{1}{K_g} \sum_{k=1}^{K_g} r_{gk}
+$$
+
+**4. Composite Ranking Score:**
+Min-max normalized global correlation $\mathcal{N}(|r_g|)$ and interaction score $\mathcal{N}(I_g)$ are combined:
+
+$$
+A_g = 0.5 \cdot \mathcal{N}(|r_g|) + 0.5 \cdot \mathcal{N}(I_g)
+$$
+
+The top candidate genes ($N = 3,000$) proceed to trajectory profile construction.
 
 ### 7.2 Markov Affinity Graph Diffusion (MAGIC)
 
@@ -297,24 +311,33 @@ where $\mathbf{M}$ is the row-normalized adaptive Gaussian kernel transition mat
 
 ### 7.3 Dual-Metric Trajectory Distance
 
-Cells are ordered along ascending CytoTRACE2 potency $q_c$. Expression matrices are smoothed across cell rank with Gaussian kernel $\sigma = 3.0$ and rolling-window averaging ($W = 100$ cells). 
+Cells are ordered along ascending CytoTRACE2 potency $q_c$. Expression matrices are smoothed across cell rank using a Gaussian kernel ($\sigma = 3.0$) and rolling-window averaging ($W = 100$ cells).
 
-For genes $g_1$ and $g_2$ with smoothed profiles $\mathbf{v}_1, \mathbf{v}_2 \in \mathbb{R}^N$, dissimilarity combines trajectory dynamic shape and absolute expression magnitude:
+For genes $g_1$ and $g_2$ with smoothed expression profiles $\mathbf{v}_1$ and $\mathbf{v}_2$, trajectory dissimilarity combines temporal shape with absolute expression amplitude:
 
 $$
-D_{\mathrm{dual}}(g_1, g_2) = \alpha_{\mathrm{shape}} \cdot d_{\mathrm{shape}}(g_1, g_2) + (1 - \alpha_{\mathrm{shape}}) \cdot d_{\mathrm{amp\_scaled}}(g_1, g_2)
+D_{\mathrm{dual}}(g_1, g_2) = \alpha_{\mathrm{shape}} \cdot d_{\mathrm{shape}}(g_1, g_2) + (1 - \alpha_{\mathrm{shape}}) \cdot d_{\mathrm{amp}}(g_1, g_2)
 $$
 
-where:
-- Shape distance computes Pearson correlation distance on $z$-scored profiles $\mathbf{z}_1, \mathbf{z}_2$:
-  $$
-  d_{\mathrm{shape}}(g_1, g_2) = 1 - \frac{\sum_{i=1}^N (z_{1i} - \bar{z}_1)(z_{2i} - \bar{z}_2)}{\sqrt{\sum_{i=1}^N (z_{1i} - \bar{z}_1)^2 \sum_{i=1}^N (z_{2i} - \bar{z}_2)^2}} \in [0, 2]
-  $$
-- Amplitude distance computes Euclidean distance normalized by the empirical 95th percentile scale factor:
-  $$
-  d_{\mathrm{amp\_scaled}}(g_1, g_2) = \min\left(2.0, \; 2.0 \cdot \frac{\|\mathbf{v}_1 - \mathbf{v}_2\|_2}{\text{Percentile}_{95}(d_{\mathrm{amp}})}\right) \in [0, 2]
-  $$
-- $\alpha_{\mathrm{shape}} = 0.5$ balances dynamic profile trajectory shape and absolute expression magnitude equally.
+The parameter $\alpha_{\mathrm{shape}} = 0.5$ balances dynamic profile shape and absolute expression magnitude equally.
+
+**Trajectory Shape Distance:**
+Pearson correlation distance is evaluated on standardized $z$-score profiles:
+
+$$
+d_{\mathrm{shape}}(g_1, g_2) = 1 - \frac{\sum_{i=1}^N (z_{1i} - \bar{z}_1)(z_{2i} - \bar{z}_2)}{\sqrt{\sum_{i=1}^N (z_{1i} - \bar{z}_1)^2 \cdot \sum_{i=1}^N (z_{2i} - \bar{z}_2)^2}}
+$$
+
+yielding $d_{\mathrm{shape}} \in [0, 2]$.
+
+**Trajectory Amplitude Distance:**
+Euclidean distance is normalized by the empirical 95th percentile scale factor $S_{95} = \mathrm{Percentile}_{95}(d_{\mathrm{raw}})$:
+
+$$
+d_{\mathrm{amp}}(g_1, g_2) = \min\left(2.0, \quad 2.0 \cdot \frac{\|\mathbf{v}_1 - \mathbf{v}_2\|_2}{S_{95}}\right)
+$$
+
+yielding $d_{\mathrm{amp}} \in [0, 2]$.
 
 ### 7.4 Hierarchical Program Clustering
 
@@ -345,13 +368,13 @@ $$
 Under the null hypothesis, the asymptotic standardized test statistic is:
 
 $$
-Z = \frac{U - \frac{n_1 n_2}{2}}{\sqrt{\operatorname{Var}(U)}}
+Z = \frac{U - \frac{n_1 n_2}{2}}{\sqrt{\mathrm{Var}(U)}}
 $$
 
 with tie-adjusted variance:
 
 $$
-\operatorname{Var}(U) = \frac{n_1 n_2}{12}\left(N + 1 - \frac{\sum_{t} (t^3 - t)}{N(N - 1)}\right)
+\mathrm{Var}(U) = \frac{n_1 n_2}{12}\left(N + 1 - \frac{\sum_{t} (t^3 - t)}{N(N - 1)}\right)
 $$
 
 ### 8.2 Multiple Hypothesis Correction
@@ -373,7 +396,7 @@ Statistical significance is defined at an FDR threshold of $P_{\mathrm{adj}} < 0
 Functional pathway enrichment along the potency trajectory is evaluated using preranked GSEA. Genes are ordered by their Spearman potency correlation score:
 
 $$
-s_g = r_g = \operatorname{Spearman}(y_{\cdot g}, q_\cdot)
+s_g = r_g = \mathrm{Spearman}(y_{\cdot g}, q_\cdot)
 $$
 
 The enrichment score $\mathrm{ES}(\mathcal{S})$ for gene set $\mathcal{S}$ evaluates the maximum deviation of a weighted running-sum statistic:
