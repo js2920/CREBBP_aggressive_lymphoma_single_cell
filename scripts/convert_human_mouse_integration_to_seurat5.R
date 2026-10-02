@@ -10,9 +10,7 @@
 # Usage:
 #   conda activate rconv2
 #   Rscript /home/gusti/CREBBP_aggressive_lymphoma_single_cell/scripts/convert_human_mouse_integration_to_seurat5.R
-#
-# Author: J
-# Date: 2025-12-02
+
 
 # ============================== PATHS ========================================
 INPUT_H5AD <- "/home/gusti/CREBBP_aggressive_lymphoma_single_cell/mouse_human_integration/Geneformer/integrated_with_geneformer_predictions.h5ad"
