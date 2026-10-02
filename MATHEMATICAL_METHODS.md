@@ -1,6 +1,6 @@
 # Mathematical Methods and Analytical Formulations
 
-This document provides specifications of the mathematical models, statistical formulations, and analytical assumptions implemented across the *Crebbp*-deficient aggressive B-cell lymphoma single-cell analysis pipeline.
+This document provides a concise, formal specification of the mathematical models, statistical formulations, and analytical assumptions implemented across the *Crebbp*-deficient aggressive B-cell lymphoma single-cell analysis pipeline.
 
 ---
 
@@ -20,10 +20,10 @@ The murine single-cell RNA sequencing cohort comprises ten discrete libraries sp
 ### 1.2 Multi-Tier Analytical Architecture
 
 The computational workflow consists of four interconnected modeling domains:
-1. **Count Decontamination & Latent Space Inference**: Ambient RNA clearance (CellBender) and deep generative variational inference (scVI) to resolve non-linear transcriptional manifolds.
-2. **Cross-Species Reference Alignment**: Reciprocal orthology mapping bridging murine lymphoma transcriptomes with human DLBCL patient profiles and healthy reactive tonsil B-cell populations.
-3. **Differentiation Potency Modeling**: Computational scoring of developmental arrest and stem-like plasticity using graph diffusion (CytoTRACE2).
-4. **Dynamic Gene Program Discovery**: Trajectory-aligned feature selection, Markov affinity graph denoising (MAGIC), and dual-metric hierarchical clustering to isolate condition-specific transcriptional programs.
+1. **Count Decontamination & Latent Space Inference**: Ambient RNA clearance via CellBender [1] and deep generative variational inference via scVI [2, 3] to resolve non-linear transcriptional manifolds.
+2. **Cross-Species Reference Alignment**: Reciprocal orthology mapping bridging murine lymphoma transcriptomes with human DLBCL patient profiles and healthy reactive tonsil B and plasma cell populations.
+3. **Differentiation Potency Modeling**: Computational scoring of developmental arrest and stem-like plasticity using regularized graph diffusion via CytoTRACE2 [7, 8].
+4. **Dynamic Gene Program Discovery**: Trajectory-aligned feature selection, Markov affinity graph denoising via MAGIC [10], and dual-metric hierarchical clustering to isolate condition-specific transcriptional programs.
 
 ---
 
@@ -31,7 +31,7 @@ The computational workflow consists of four interconnected modeling domains:
 
 ### 2.1 Ambient RNA Decontamination Model
 
-Observed droplet expression profiles reflect a mixture of intracellular RNA and cell-free ambient contamination. CellBender formulates observed count $y_{cg}$ for cell barcode $c$ and gene $g$ via a hierarchical Bayesian model:
+Observed droplet expression profiles reflect a mixture of intracellular RNA and cell-free ambient contamination. CellBender [1] formulates observed count $y_{cg}$ for cell barcode $c$ and gene $g$ via a hierarchical Bayesian model:
 
 $$
 y_{cg} = z_{cg} + a_{cg}
@@ -56,7 +56,7 @@ These background-corrected counts populate `layers['counts']` as raw integer-lik
 Cellular barcodes are filtered to remove non-viable cells, broken droplets, and multi-cell multiplets:
 - **Gene complexity**: Minimum of $N_{\mathrm{genes}} \ge 200$ distinct detected genes per cell barcode.
 - **Mitochondrial count fraction**: Maximum mitochondrial threshold $\le 10.0\%$.
-- **Multiplet removal**: Scrublet detects artificial transcriptomic doublets using simulated homotypic/heterotypic doublets, flagging droplets exceeding an expected doublet rate of 0.06.
+- **Multiplet removal**: Scrublet [4] detects artificial transcriptomic doublets using simulated homotypic/heterotypic doublets, flagging droplets exceeding an expected doublet rate of 0.06.
 - **Gene prevalence**: Genes must be detected in at least $N_{\mathrm{cells}} \ge 3$ cells across the cohort.
 
 The mitochondrial count percentage for cell barcode $c$ is evaluated as:
@@ -75,7 +75,7 @@ $$
 
 ### 2.4 Feature Selection and Confounder Masking
 
-To identify biologically informative manifold axes, 5,000 highly variable genes (HVGs) are selected using the `seurat_v3` variance-stabilizing transformation across batch strata:
+To identify biologically informative manifold axes, 5,000 highly variable genes (HVGs) are selected using the `seurat_v3` variance-stabilizing transformation across batch strata in Scanpy [5]:
 
 $$
 \sigma^2_g = \mathrm{Var}_{\mathrm{norm}}(x_{\cdot g})
@@ -95,7 +95,7 @@ The retained HVG set $\mathcal{H} = \mathcal{G}_{\mathrm{HVG}} \setminus \mathca
 
 ### 3.1 Observation Likelihood
 
-scVI models count variation using a deep generative framework parameterized by neural networks. For cell $c$ and gene $g \in \mathcal{H}$, the observed count $x_{cg}$ follows a Negative Binomial distribution:
+The single-cell Variational Inference (scVI) framework [2, 3] models count variation using a deep generative model parameterized by neural networks. For cell $c$ and gene $g \in \mathcal{H}$, the observed count $x_{cg}$ follows a Negative Binomial distribution:
 
 $$
 x_{cg} \mid \mathbf{z}_c, L_c, b_c, \mathbf{u}_c \sim \mathrm{NB}(\mu_{cg}, \theta_{g,b_c})
@@ -151,7 +151,7 @@ $$
 d_{\mathrm{scVI}}(c_i, c_j) = \|\mathbf{z}_{c_i} - \mathbf{z}_{c_j}\|_2
 $$
 
-Cell communities are partitioned using the Leiden algorithm by maximizing modularity across resolution parameters $\gamma \in \{0.3, 0.5, 1.0\}$:
+Cell communities are partitioned using the Leiden algorithm [6] by maximizing modularity across resolution parameters $\gamma \in \{0.3, 0.5, 1.0\}$:
 
 $$
 \mathcal{Q}(\gamma) = \frac{1}{2m} \sum_{ij} \left[ A_{ij} - \gamma \frac{k_i k_j}{2m} \right] \delta(\sigma_i, \sigma_j)
@@ -163,7 +163,7 @@ $$
 
 ### 4.1 Orthology Projection
 
-To project murine lymphoma phenotypes onto human clinical lymphoma and tonsil differentiation hierarchies, mouse gene identifiers are mapped to human orthologs using reciprocal 1:1 Ensembl BioMart homology:
+To project murine lymphoma phenotypes onto human clinical lymphoma and tonsil differentiation hierarchies, mouse gene identifiers are mapped to human orthologs using reciprocal 1:1 Ensembl BioMart homology [13]:
 
 $$
 \mathcal{M}_{1:1}: \mathcal{G}_{\mathrm{mouse}} \longrightarrow \mathcal{G}_{\mathrm{human}}
@@ -179,7 +179,7 @@ $$
 \mathcal{H}_{\mathrm{shared}} = \left\lbrace g \in \mathcal{G}_{\mathrm{orth}} \mid \sum_{d=1}^D \mathbb{I}(g \in \mathrm{HVG}_d) \ge 2 \right\rbrace
 $$
 
-A joint scVI variational autoencoder integrates mouse lymphoma, human DLBCL (primary clinical biopsies), and healthy human tonsil GC B cells using a nested batch key:
+A joint scVI variational autoencoder integrates mouse lymphoma, human DLBCL (primary clinical biopsies), and healthy human tonsil B and plasma cells using a nested batch key:
 
 $$
 \mathbf{s}_c = [\mathbf{s}_c^{\mathrm{batch}}, \; \mathbf{s}_c^{\mathrm{species}}]
@@ -193,7 +193,7 @@ This formulation models technical batch and species divergence while aligning sh
 
 ### 5.1 Transcriptional Entropy and Potency Formulation
 
-Developmental potency and differentiation commitment are scored using CytoTRACE2. The underlying formulation exploits the relationship between open chromatin plasticity and transcriptional entropy, quantified by the active gene count signature:
+Developmental potency and differentiation commitment are scored using CytoTRACE2 [7, 8]. The underlying formulation exploits the relationship between open chromatin plasticity and transcriptional entropy, quantified by the active gene count signature:
 
 $$
 \mathrm{GCS}_c = \sum_{g} \mathbb{I}(x_{cg} > 0)
@@ -217,7 +217,7 @@ $$
 \tau_c = 1 - q_c
 $$
 
-tracking progressive maturation from undifferentiated stem-like B-cell states ($\tau_c \to 0, q_c \to 1$) toward terminally differentiated effector states ($\tau_c \to 1, q_c \to 0$).
+tracking progressive maturation from undifferentiated stem-like B-cell states ($\tau_c \to 0$, $q_c \to 1$) toward terminally differentiated effector states ($\tau_c \to 1$, $q_c \to 0$).
 
 ---
 
@@ -225,7 +225,13 @@ tracking progressive maturation from undifferentiated stem-like B-cell states ($
 
 ### 6.1 Rank-Value Transcriptome Tokenization
 
-Geneformer processes single-cell transcriptomes as rank-ordered token sequences. For cell $c$, genes with non-zero expression are normalized by library size $\tilde{x}_{cg} = 10^4 \cdot \frac{x_{cg}}{L_c}$ and sorted in descending order:
+Geneformer [9] processes single-cell transcriptomes as rank-ordered token sequences. For cell $c$, non-zero gene expressions are normalized by total cell depth $L_c$:
+
+$$
+\tilde{x}_{cg} = 10^4 \cdot \frac{x_{cg}}{L_c}
+$$
+
+and sorted in descending order of relative abundance:
 
 $$
 \boldsymbol{\tau}_c = \left( t_{(1)}, t_{(2)}, \ldots, t_{(M)} \right), \quad \tilde{x}_{c, t_{(1)}} \ge \tilde{x}_{c, t_{(2)}} \ge \cdots \ge \tilde{x}_{c, t_{(M)}}
@@ -239,9 +245,9 @@ $$
 
 making the input robust to variation in technical sequencing depth. The sequence is truncated to the model context length of $M = 2,048$ tokens.
 
-### 6.2 Fine-Tuning on Tonsil B and Plasma cell Reference States
+### 6.2 Fine-Tuning on Tonsil B and Plasma Cell Reference States
 
-A pre-trained 6-layer transformer is fine-tuned for cell state classification using annotated human tonsil B cells (dark zone centroblasts, light zone centrocytes, memory B cells, and plasma cells). The classification objective optimizes cross-entropy loss:
+A pre-trained 6-layer transformer is fine-tuned for cell state classification using annotated human tonsil B and plasma cells (dark zone centroblasts, light zone centrocytes, memory B cells, and plasma cells) [9]. The classification objective optimizes cross-entropy loss:
 
 $$
 \mathcal{L}_{\mathrm{CE}} = - \frac{1}{N} \sum_{i=1}^N \sum_{k=1}^K y_{ik} \log p_{ik}
@@ -263,7 +269,7 @@ $$
 C_c = \max_k p_{ck}
 $$
 
-High-confidence predictions ($C_c \ge 0.70$) define cells exhibiting confident phenotypic alignment with canonical maturation compartments.
+High-confidence predictions ($C_c \ge 0.70$) define cells exhibiting confident phenotypic alignment with canonical tonsil B and plasma cell maturation compartments.
 
 ---
 
@@ -301,7 +307,7 @@ The top candidate genes ($N = 3,000$) proceed to trajectory profile construction
 
 ### 7.2 Markov Affinity Graph Diffusion (MAGIC)
 
-To address technical dropouts and expose continuous expression dynamics along the trajectory, normalized expression profiles undergo Markov affinity diffusion:
+To address technical dropouts and expose continuous expression dynamics along the trajectory, normalized expression profiles undergo Markov affinity diffusion via MAGIC [10]:
 
 $$
 \widehat{\mathbf{X}} = \mathbf{M}^t \mathbf{X}
@@ -393,7 +399,7 @@ Statistical significance is defined at an FDR threshold of $P_{\mathrm{adj}} < 0
 
 ### 8.3 Preranked Gene Set Enrichment Analysis (GSEA)
 
-Functional pathway enrichment along the potency trajectory is evaluated using preranked GSEA. Genes are ordered by their Spearman potency correlation score:
+Functional pathway enrichment along the potency trajectory is evaluated using preranked GSEA [11] implemented via GSEApy [12]. Genes are ordered by their Spearman potency correlation score:
 
 $$
 s_g = r_g = \mathrm{Spearman}(y_{\cdot g}, q_\cdot)
@@ -422,7 +428,7 @@ with weighting exponent $p = 1.0$. Significance is evaluated against empirical n
 | **Batch Integration** | Conditional ELBO maximization | `sample_id` batch key + condition/cell cycle covariates | Aligns disparate sequencing batches while preserving biological states |
 | **Species Alignment** | 1:1 Reciprocal orthology | Ensembl BioMart + MGI homology catalog | Harmonizes mouse and human feature spaces for joint manifold learning |
 | **Potency Scoring** | Harmonic graph diffusion | Random-walk restart $\alpha = 0.90$, continuous $q_c \in [0, 1]$ | Quantifies developmental plasticity and stem-like state transitions |
-| **State Transfer** | Rank-value attention encoding | 2,048 tokens, 6-layer BERT, cross-entropy loss | Maps malignant query cells to germinal center B-cell compartments |
+| **State Transfer** | Rank-value attention encoding | 2,048 tokens, 6-layer BERT, cross-entropy loss | Maps malignant query cells to tonsil B and plasma cell compartments |
 | **Trajectory Denoising** | Markov affinity diffusion | MAGIC $t=12$, $k=30$ neighbors, decay $1.0$ | Mitigates single-cell dropouts along continuous developmental paths |
 | **Program Dissimilarity**| Dual-metric trajectory distance | $\alpha_{\mathrm{shape}} = 0.50$ (Pearson shape + Euclidean amplitude) | Identifies co-regulated dynamic gene programs along potency gradients |
 | **Statistical Testing** | Wilcoxon rank-sum + BH-FDR | Two-sided rank test, FDR $\alpha = 0.05$ | Discovers robust, non-parametric cluster-specific biomarker panels |
@@ -442,3 +448,21 @@ with weighting exponent $p = 1.0$. Significance is evaluated against empirical n
 | Condition-discriminative gene selection, MAGIC, and trajectory clustering | [`ordering_cytotrace_2_mouse_geneformer.py`](scripts/ordering_cytotrace_2_mouse_geneformer.py) |
 | Metabolic trajectory profiling and correlation modeling | [`pgc1_cytotrace2_trajectory.py`](scripts/pgc1_cytotrace2_trajectory.py) |
 | Non-parametric Wilcoxon rank-sum differential expression | [`wilcoxon_rank_mouse_integrated.py`](scripts/wilcoxon_rank_mouse_integrated.py) |
+
+---
+
+## 11. References
+
+1. **CellBender:** Fleming, S. J., Chaffin, M. D., Arduini, A., Akkad, A. D., Banks, E., Marioni, J. C., Philippakis, A. A., Ellinor, P. T., & Babadi, M. (2023). Unsupervised removal of systematic background noise from droplet-based single-cell experiments using CellBender. *Nature Methods*, 20(9), 1323–1335. https://doi.org/10.1038/s41592-023-01943-7
+2. **scVI:** Lopez, R., Regier, J., Cole, M. B., Jordan, M. I., & Yosef, N. (2018). Deep generative modeling for single-cell transcriptomics. *Nature Methods*, 15(12), 1053–1058. https://doi.org/10.1038/s41592-018-0229-2
+3. **scvi-tools:** Gayoso, A., Lopez, R., Xing, G., Boyeau, P., Valiollah Pour Amiri, V., Hong, J., Chen, W., Wu, K., Jayasuriya, M., Mehlman, E., Lange, M., Yarats, D., Regier, J., & Yosef, N. (2022). A Python library for probabilistic analysis of single-cell omics data. *Nature Biotechnology*, 40(2), 163–166. https://doi.org/10.1038/s41587-021-01206-w
+4. **Scrublet:** Wolock, S. L., Lopez, R., & Klein, A. M. (2019). Scrublet: Computational Identification of Cell Doublets in Single-Cell Transcriptomic Data. *Cell Systems*, 8(4), 281–291.e9. https://doi.org/10.1016/j.cels.2018.11.005
+5. **Scanpy:** Wolf, F. A., Angerer, P., & Theis, F. J. (2018). SCANPY: large-scale single-cell gene expression data analysis. *Genome Biology*, 19(1), 15. https://doi.org/10.1186/s13059-017-1382-0
+6. **Leiden Algorithm:** Traag, V. A., Waltman, L., & van Eck, N. J. (2019). From Louvain to Leiden: guaranteeing well-connected communities. *Scientific Reports*, 9(1), 5233. https://doi.org/10.1038/s41598-019-41695-z
+7. **CytoTRACE:** Gulati, G. S., Sikandar, S. S., Wesche, D. J., Manjunath, A., Bharadwaj, A., Berger, M. J., Ilagan, F., Kuo, A. H., Hurlbut, N. K., Newman, A. M., & Clarke, M. F. (2020). Single-cell transcriptional diversity is a hallmark of developmental potential. *Science*, 367(6476), 405–411. https://doi.org/10.1126/science.aax0249
+8. **CytoTRACE2:** Kang, M. T., Gulati, G. S., & Newman, A. M. (2024). CytoTRACE 2: Cellular Potency and Lineage Reconstruction from Single-Cell RNA Sequencing. *Nature*, in press / bioRxiv. https://github.com/digitalcytometry/cytotrace2
+9. **Geneformer:** Theodoris, C. V., Xiao, L., Chopra, A., Chaffin, M. D., Al Sayed, Z. R., Hill, M. C., Mantineo, H., Brydon, E. M., Zeng, Z., Liu, X. S., & Ellinor, P. T. (2023). Transfer learning enables predictions in network biology. *Nature*, 618(7965), 616–624. https://doi.org/10.1038/s41586-023-06139-9
+10. **MAGIC:** van Dijk, D., Sharma, R., Nainys, J., Yim, K., Kathail, P., Carr, A. J., Burdziak, C., Moon, K. R., Chaffer, C. L., Pattabiraman, D., Bierie, B., Mazutis, L., Wolf, G., Krishnaswamy, S., & Pe'er, D. (2018). Recovering Gene Interactions from Single-Cell Data Using Data Diffusion. *Cell*, 174(3), 716–729.e27. https://doi.org/10.1016/j.cell.2018.05.061
+11. **GSEA:** Subramanian, A., Tamayo, P., Mootha, V. K., Mukherjee, S., Ebert, B. L., Gillette, M. A., Paulovich, A., Pomeroy, S. L., Golub, T. R., Lander, E. S., & Mesirov, J. P. (2005). Gene set enrichment analysis: A knowledge-based approach for interpreting genome-wide expression profiles. *Proceedings of the National Academy of Sciences*, 102(43), 15545–15550. https://doi.org/10.1073/pnas.0506580102
+12. **GSEApy:** Fang, Z., Liu, X., & Peltz, G. (2023). GSEApy: a Python package for gene set enrichment analysis. *Bioinformatics*, 39(1), btac757. https://doi.org/10.1093/bioinformatics/btac757
+13. **Ensembl BioMart:** Kinsella, R. J., Kähäri, A., Haider, S., Zamora, J., Proctor, G., Spudich, G., Almeida-King, J., Staines, D., Derwent, P., Kerhornou, A., Kersey, P., & Flicek, P. (2011). Ensembl BioMarts: a hub for data retrieval across taxonomic space. *Database*, 2011, bar030. https://doi.org/10.1093/database/bar030
