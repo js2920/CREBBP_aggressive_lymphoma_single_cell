@@ -7,8 +7,6 @@ Plot CytoTRACE2 Scores on scVI UMAP
 This script loads the integrated data with CytoTRACE2 scores and generates
 publication-quality visualizations of differentiation potential.
 
-Author: J
-Date: 2025-12-11
 """
 
 import os
