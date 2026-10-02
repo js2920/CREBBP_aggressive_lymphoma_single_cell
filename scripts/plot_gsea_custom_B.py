@@ -3,14 +3,13 @@
 Custom GSEA/Enrichr Scatter Plots - Version B
 =================================
 Generates publication-quality plots:
-- GSEA prerank plots (NES on Y-axis) - captures OXPHOS!
+- GSEA prerank plots (NES on Y-axis) 
 - Enrichr plots (Combined Score on Y-axis)
-- Both with clean aesthetics
+
 
 Version B: Two separate panels for Malignant (red points) and Physiologic (blue diamonds)
 with bigger labels.
 
-Author: Generated for CytoTRACE2 analysis
 """
 
 import pandas as pd
