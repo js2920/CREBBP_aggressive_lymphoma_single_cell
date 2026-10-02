@@ -13,8 +13,6 @@ Usage:
     conda activate <your_scanpy_env>  # or appropriate environment
     python generate_public_gene_set_scores_mouse.py
 
-Author: J
-Date: 2025-01-XX
 """
 
 import os
