@@ -7,45 +7,27 @@
 # ==============================================================================
 #
 # This is a SELF-CONTAINED reproducibility recipe.
-# All 26 analysis scripts are embedded below and will be extracted
-# into ./scripts/ when you run this file.
+# All 26 analysis scripts + 1 synthetic smoke test are embedded below and will
+# be extracted into ./scripts/ when you run this file.
 #
 # QUICK START:
-#   1. Edit the ── USER CONFIGURATION ── section below
-#   2. bash MasterAnalysis.sh              # extract scripts (dry-run)
-#   3. bash MasterAnalysis.sh --run        # execute the full pipeline
+#   1. View options:        bash MasterAnalysis.sh --help
+#   2. Check environment:   bash MasterAnalysis.sh --check-env
+#   3. Test pipeline code:  bash MasterAnalysis.sh --smoke-test
+#   4. Preview dry-run:     bash MasterAnalysis.sh --dry-run
+#   5. Run targeted stage:  bash MasterAnalysis.sh --run --stage 1
+#   6. Run full analysis:   bash MasterAnalysis.sh --run
 #
 # ==============================================================================
 #
-# PIPELINE OVERVIEW
-# -----------------
-#   Stage 0  Cell Ranger 9.0.1 alignment to GRCm39
-#   Stage 1  Mouse scVI integration, CytoTRACE2, gene-set scoring
-#   Stage 2  Geneformer fine-tuning on tonsil atlas → mouse prediction
-#   Stage 3  Cross-species scVI (human DLBCL + mouse + tonsil GC B cells)
-#   Stage 4  Gene expression programs along CytoTRACE2 trajectory + GSEA
-#   Stage 5  Supplementary: PGC1α trajectory, Wilcoxon rank-sum tests
-#
-# SOFTWARE REQUIREMENTS
-# ---------------------
-#   - Cell Ranger 9.0.1
-#   - CellBender
-#   - Python ≥3.10 with: scanpy ≥1.9, scvi-tools ≥1.0, cytotrace2_py,
-#     gseapy, scrublet, mygene, seaborn, matplotlib, magic-impute
-#   - R ≥4.0 with: Seurat v5, zellkonverter, SingleCellExperiment
-#   - Geneformer (ctheodoris/Geneformer from Hugging Face)
-#
-# DATA REQUIREMENTS
-# -----------------
-#   Download from GEO (accession: GSExxxxxx):
-#     - Raw FASTQ files (10 mouse scRNA-seq samples)
-#     - Processed files: mouse_integrated_with_public_scores.h5ad
-#                        integrated_tonsil_human_mouse_with_geneformer_predictions.h5ad
-#   Additional public data:
-#     - Human DLBCL: Roider et al. (DLBCL1/2/3_raw.h5ad)
-#                    Alizadeh et al. GSE182434 (CD20+ subset)
-#     - Human tonsil: HCATonsilData R/Bioconductor package
-#     - GRCm39 reference genome (10x Genomics)
+# PIPELINE STAGES
+# ---------------
+#   Stage 0  Cell Ranger 9.0.1 alignment to GRCm39 (manual)
+#   Stage 1  Mouse scVI integration, CytoTRACE2, gene-set scoring (9 scripts)
+#   Stage 2  Geneformer fine-tuning on tonsil atlas → mouse prediction (2 scripts)
+#   Stage 3  Cross-species scVI: human DLBCL + mouse + tonsil B/plasma (9 scripts)
+#   Stage 4  Gene expression programs along CytoTRACE2 trajectory + GSEA (3 scripts)
+#   Stage 5  Supplementary: PGC1α trajectory, Wilcoxon rank-sum tests (2 scripts)
 #
 # ==============================================================================
 
@@ -56,48 +38,196 @@ set -euo pipefail
 # │  Edit the paths below to match your local setup before running.           │
 # └────────────────────────────────────────────────────────────────────────────┘
 
-# Base directory: the folder containing this script (auto-detected)
-BASEDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Base directory: auto-detected repository root
+BASEDIR="${CREBBP_BASE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 
-# ── Input data directories (EDIT THESE) ──
+# ── Input data directories ──
+CELLBENDER_DIR="${CELLBENDER_DIR:-${BASEDIR}/data/cellbender_filtered}"
+DLBCL_DIR="${DLBCL_DIR:-${BASEDIR}/data/DLBCL}"
+TONSIL_DIR="${TONSIL_DIR:-${BASEDIR}/data/tonsil_export}"
+GENEFORMER_MODEL_DIR="${GENEFORMER_MODEL_DIR:-${BASEDIR}/models/geneformer_tonsil_multi}"
 
-# Directory with CellBender-filtered .h5 files (one per sample)
-CELLBENDER_DIR="${BASEDIR}/data/cellbender_filtered"
-
-# Human DLBCL h5ad files
-#   Expected contents: DLBCL1_raw.h5ad, DLBCL2_raw.h5ad, DLBCL3_raw.h5ad
-#                      Alizadeh/GSE182434_DLBCL_CD20pos.h5ad
-DLBCL_DIR="${BASEDIR}/data/DLBCL"
-
-# Human tonsil atlas exported h5ad files (from HCATonsilData)
-#   Expected: tonsil_GCBC_RNA.h5ad, tonsil_NBC-MBC_RNA.h5ad
-TONSIL_DIR="${BASEDIR}/data/tonsil_export"
-
-# Geneformer fine-tuned model (output of Stage 2a, or pre-trained)
-#   Expected: fine_tuned_model/, label_encoder.pkl
-GENEFORMER_MODEL_DIR="${BASEDIR}/models/geneformer_tonsil_multi"
+# ── Configuration file ──
+CONFIG_FILE="${CONFIG_FILE:-${BASEDIR}/config/pipeline_config.yaml}"
 
 # ── Cell Ranger settings (Stage 0 only) ──
+FASTQ_DATA_ROOT="${FASTQ_DATA_ROOT:-${BASEDIR}/data/raw_fastq}"
+CELLRANGER_REF="${CELLRANGER_REF:-${BASEDIR}/data/refdata-gex-GRCm39-2024-A}"
+CELLRANGER_BIN="${CELLRANGER_BIN:-cellranger}"
 
-# Root directory containing raw 10x FASTQ tar archives
-FASTQ_DATA_ROOT="${BASEDIR}/data/raw_fastq"
+# ── Python executable auto-detection ──
+if [[ -z "${PYTHON_BIN:-}" ]]; then
+    if command -v python >/dev/null 2>&1 && python -c "import scanpy" >/dev/null 2>&1; then
+        PYTHON_BIN="$(command -v python)"
+    elif command -v python3 >/dev/null 2>&1 && python3 -c "import scanpy" >/dev/null 2>&1; then
+        PYTHON_BIN="$(command -v python3)"
+    elif [[ -x "${CONDA_PREFIX:-}/bin/python" ]] && "${CONDA_PREFIX}/bin/python" -c "import scanpy" >/dev/null 2>&1; then
+        PYTHON_BIN="${CONDA_PREFIX}/bin/python"
+    elif [[ -x "${HOME}/miniconda3/envs/crebbp_sc_pipeline/bin/python" ]]; then
+        PYTHON_BIN="${HOME}/miniconda3/envs/crebbp_sc_pipeline/bin/python"
+    elif [[ -x "${HOME}/miniconda3/envs/scvi_cytotrace2/bin/python" ]]; then
+        PYTHON_BIN="${HOME}/miniconda3/envs/scvi_cytotrace2/bin/python"
+    elif [[ -x "${HOME}/anaconda3/envs/crebbp_sc_pipeline/bin/python" ]]; then
+        PYTHON_BIN="${HOME}/anaconda3/envs/crebbp_sc_pipeline/bin/python"
+    else
+        PYTHON_BIN="python3"
+    fi
+fi
 
-# Cell Ranger reference genome
-CELLRANGER_REF="${BASEDIR}/data/refdata-gex-GRCm39-2024-A"
-
-# Cell Ranger binary
-CELLRANGER_BIN="cellranger"
+# ── Geneformer Python environment auto-detection (Stage 2) ──
+if [[ -z "${GENEFORMER_PYTHON:-}" ]]; then
+    if command -v python >/dev/null 2>&1 && python -c "import geneformer" >/dev/null 2>&1; then
+        GENEFORMER_PYTHON="$(command -v python)"
+    elif [[ -x "${HOME}/miniconda3/envs/geneformer/bin/python" ]]; then
+        GENEFORMER_PYTHON="${HOME}/miniconda3/envs/geneformer/bin/python"
+    elif [[ -x "${HOME}/anaconda3/envs/geneformer/bin/python" ]]; then
+        GENEFORMER_PYTHON="${HOME}/anaconda3/envs/geneformer/bin/python"
+    else
+        GENEFORMER_PYTHON="${PYTHON_BIN}"
+    fi
+fi
 
 # ┌────────────────────────────────────────────────────────────────────────────┐
 # │                    END OF USER CONFIGURATION                              │
 # └────────────────────────────────────────────────────────────────────────────┘
 
 SCRIPTS="${BASEDIR}/scripts"
-RUN_MODE="${1:-}"
+RUN_MODE="dry-run"
+TARGET_STAGE="all"
+FORCE_EXTRACT="false"
+SKIP_DATA_CHECK="false"
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --run)
+            RUN_MODE="run"
+            shift
+            ;;
+        --dry-run)
+            RUN_MODE="dry-run"
+            shift
+            ;;
+        --extract-only)
+            RUN_MODE="extract-only"
+            shift
+            ;;
+        --force-extract)
+            FORCE_EXTRACT="true"
+            shift
+            ;;
+        --skip-data-check)
+            SKIP_DATA_CHECK="true"
+            shift
+            ;;
+        --stage)
+            if [[ -z "${2:-}" ]]; then
+                echo "Error: --stage requires a stage number (0, 1, 2, 3, 4, 5, or all)" >&2
+                exit 1
+            fi
+            TARGET_STAGE="$2"
+            if [[ ! "$TARGET_STAGE" =~ ^(0|1|2|3|4|5|all)$ ]]; then
+                echo "Error: Invalid stage '$TARGET_STAGE'. Allowed values: 0, 1, 2, 3, 4, 5, all" >&2
+                exit 1
+            fi
+            shift 2
+            ;;
+        --config)
+            if [[ -z "${2:-}" ]]; then
+                echo "Error: --config requires a configuration file path" >&2
+                exit 1
+            fi
+            CONFIG_FILE="$2"
+            shift 2
+            ;;
+        --smoke-test)
+            echo "============================================================"
+            echo "  Running Pipeline Smoke Test (Synthetic Dataset)"
+            echo "============================================================"
+            "${PYTHON_BIN}" "${SCRIPTS}/run_smoke_test.py"
+            exit 0
+            ;;
+        --check-env)
+            echo "============================================================"
+            echo "  Checking Computational Environment & Dependencies"
+            echo "============================================================"
+            echo "  Base Directory   : ${BASEDIR}"
+            echo "  Primary Python   : ${PYTHON_BIN}"
+            echo "  Geneformer Python: ${GENEFORMER_PYTHON}"
+            echo "------------------------------------------------------------"
+            "${PYTHON_BIN}" -W ignore -c "import scanpy, scvi, anndata, scipy, numpy, pandas; print('  ✓ Python core transcriptomics stack OK (scanpy ' + scanpy.__version__ + ', scvi-tools ' + scvi.__version__ + ')')" 2>/dev/null || echo "  ✗ Python core stack missing in ${PYTHON_BIN} (activate crebbp_sc_pipeline)"
+            "${PYTHON_BIN}" -W ignore -c "import cytotrace2_py; print('  ✓ CytoTRACE2 python package OK')" 2>/dev/null || echo "  ! CytoTRACE2 python package not detected"
+            "${PYTHON_BIN}" -W ignore -c "import magic, gseapy, scrublet, mygene; print('  ✓ Trajectory & analysis packages OK (magic, gseapy, scrublet, mygene)')" 2>/dev/null || echo "  ! Some secondary analysis packages missing"
+            "${PYTHON_BIN}" -W ignore -c "import torch; cuda_ok = torch.cuda.is_available(); dev = torch.cuda.get_device_name(0) if cuda_ok else 'CPU only'; print('  ✓ PyTorch CUDA status: ' + ('Available (' + dev + ')' if cuda_ok else 'CPU only (GPU recommended for scVI)'))" 2>/dev/null || echo "  ! PyTorch not detected"
+            "${GENEFORMER_PYTHON}" -W ignore -c "import transformers, datasets, torch; print('  ✓ Geneformer / HuggingFace environment OK')" 2>/dev/null || echo "  ! Geneformer environment not detected (activate geneformer conda env for Stage 2)"
+            Rscript -e "suppressPackageStartupMessages(library(Seurat)); cat('  ✓ R / Seurat stack OK (Seurat v', as.character(packageVersion('Seurat')), ')
+', sep='')" 2>/dev/null || echo "  ! R Seurat stack not detected (required for Stage 3i .rds export)"
+            echo "============================================================"
+            exit 0
+            ;;
+        -h|--help)
+            cat << 'HELP_DOC'
+Usage: bash MasterAnalysis.sh [OPTIONS]
+
+Options:
+  --dry-run            Display execution order and commands without running (default)
+  --run                Execute the pipeline (full pipeline or targeted stage)
+  --stage <N>          Execute only stage N (0, 1, 2, 3, 4, 5, or all)
+  --config <path>      Path to pipeline_config.yaml configuration file
+  --smoke-test         Run fast 5-second smoke test on synthetic dataset
+  --check-env          Verify required Python and R dependencies
+  --extract-only       Extract all 27 embedded scripts to ./scripts/ and exit
+  --force-extract      Force re-extraction of scripts even if already present
+  --skip-data-check    Bypass pre-flight input data existence checks
+  -h, --help           Show this help message
+
+Pipeline Stages:
+  Stage 0              Cell Ranger alignment of raw FASTQs to GRCm39 (manual)
+  Stage 1              Mouse scVI integration, CytoTRACE2, and Leiden clustering
+  Stage 2              Geneformer training on tonsil atlas & mouse state prediction
+  Stage 3              Cross-species scVI (mouse lymphoma + human DLBCL + tonsil B cells)
+  Stage 4              Trajectory gene programs along potency axis + GSEA
+  Stage 5              Supplementary: PGC1α metabolic trajectory & Wilcoxon DE
+
+Environment Overrides:
+  PYTHON_BIN           Path to primary Python binary (auto-detected)
+  GENEFORMER_PYTHON    Path to Geneformer Python binary (auto-detected)
+  CREBBP_BASE_DIR      Override repository base directory
+  CELLBENDER_DIR       Override CellBender input directory
+  DLBCL_DIR            Override human DLBCL input directory
+  TONSIL_DIR           Override human tonsil input directory
+  GENEFORMER_MODEL_DIR Override Geneformer model directory
+HELP_DOC
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            echo "Run 'bash MasterAnalysis.sh --help' for usage." >&2
+            exit 1
+            ;;
+    esac
+done
+
+# Export environment variables for child processes
+export CREBBP_BASE_DIR="${BASEDIR}"
+export CELLBENDER_DIR="${CELLBENDER_DIR}"
+export DLBCL_DIR="${DLBCL_DIR}"
+export TONSIL_DIR="${TONSIL_DIR}"
+export GENEFORMER_MODEL_DIR="${GENEFORMER_MODEL_DIR}"
+export FASTQ_DATA_ROOT="${FASTQ_DATA_ROOT}"
+export CELLRANGER_REF="${CELLRANGER_REF}"
+export CELLRANGER_BIN="${CELLRANGER_BIN}"
+export PYTHON_BIN="${PYTHON_BIN}"
+export GENEFORMER_PYTHON="${GENEFORMER_PYTHON}"
+if [[ -f "${CONFIG_FILE}" ]]; then
+    export PIPELINE_CONFIG="${CONFIG_FILE}"
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # STEP 1: Extract embedded scripts into ./scripts/
 # ─────────────────────────────────────────────────────────────────────────────
+mkdir -p "${SCRIPTS}"
+
+if [[ ! -f "${SCRIPTS}/run_smoke_test.py" || "$FORCE_EXTRACT" == "true" || "$RUN_MODE" == "extract-only" ]]; then
 echo "============================================================"
 echo "  MasterAnalysis.sh — Extracting scripts"
 echo "============================================================"
@@ -105,8 +235,6 @@ echo ""
 echo "  Base directory : ${BASEDIR}"
 echo "  Scripts dir    : ${SCRIPTS}"
 echo ""
-mkdir -p "${SCRIPTS}"
-
 
 cat > "${SCRIPTS}/cellranger_shabanas_gex.sh" << '__EOF_cellranger_shabanas_gex_sh__'
 #!/usr/bin/env bash
@@ -5199,32 +5327,6 @@ __EOF_geneformer_predict_and_plot_manuscript_py__
 
 cat > "${SCRIPTS}/scvi_human_dlbcl_mouse_malignant_integration.py" << '__EOF_scvi_human_dlbcl_mouse_malignant_integration_py__'
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Human DLBCL + Malignant Mouse + Tonsil GC B Integration (scVI + CytoTRACE2)
-===========================================================================
-
-Integrates:
-- Human DLBCL samples (Roider DLBCL1/2/3 + Alizadeh CD20+)
-- Malignant mouse samples (ONLY Malignant + Matched_malignant, CellBender filtered)
-- Human Tonsil GC B cells (LZ/DZ + centroblasts + centrocytes, with optional proliferation filtering)
-
-Key features:
-- Mouse→Human ortholog mapping via BioMart 1:1
-- Proper Scrublet doublet detection for mouse samples
-- Tonsil GC B cell filtering with proliferation removal
-- scVI integration with species covariate
-- CytoTRACE2 analysis (uses UNION of all genes, as recommended by CT2)
-- Cross-species HVG filtering
-
-Author: J
-Date: 2025-12-10
-"""
-
-# ============================== SETUP ========================================
-import os
-os.environ["OMP_NUM_THREADS"] = "4"
-os.environ["OPENBLAS_NUM_THREADS"] = "4"#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Human DLBCL + Malignant Mouse + Tonsil GC B Integration (scVI + CytoTRACE2)
@@ -16013,8 +16115,110 @@ print("\nAnalysis complete!")
 
 
 __EOF_wilcoxon_rank_mouse_integrated_py__
+cat > "${SCRIPTS}/run_smoke_test.py" << '__EOF_run_smoke_test_py__'
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+End-to-end smoke test for CREBBP aggressive lymphoma single-cell pipeline.
+Runs a self-contained test on synthetic data without requiring GEO downloads.
+Verifies QC, normalization, clustering, trajectory scoring, and Wilcoxon testing.
+"""
 
-echo "  Extracted 26 scripts."
+import os
+import shutil
+import tempfile
+from pathlib import Path
+import numpy as np
+import pandas as pd
+import scipy.sparse as sp
+from scipy import stats
+
+print("=" * 65)
+print("  CREBBP Single-Cell Pipeline Smoke Test (Synthetic Dataset)")
+print("=" * 65)
+
+# Verify required core scientific stack
+try:
+    import scanpy as sc
+    import anndata as ad
+    print("  ✓ Scanpy and AnnData imported successfully")
+except ImportError as e:
+    print(f"  ✗ Required package missing: {e}")
+    print("    Please activate the pipeline environment (conda activate crebbp_sc_pipeline)")
+    exit(1)
+
+# Set seeds
+np.random.seed(42)
+
+# Generate synthetic counts: 200 cells, 80 genes
+n_cells = 200
+n_genes = 80
+cells = [f"cell_{i:03d}" for i in range(n_cells)]
+genes = [f"Gene_{j:02d}" for j in range(n_genes)]
+genes[0] = "Cd19"
+genes[1] = "Ms4a1"
+genes[2] = "Pax5"
+genes[3] = "mt-Nd1"
+genes[4] = "mt-Nd2"
+
+# Simulating discrete counts with negative binomial distribution
+counts = np.random.negative_binomial(n=4, p=0.6, size=(n_cells, n_genes)).astype(np.float32)
+# Introduce differential expression between conditions
+conditions = np.random.choice(["WT_B_cells", "Malignant"], size=n_cells)
+counts[conditions == "Malignant", 0] *= 3.0  # Upregulate Cd19 in Malignant
+sparse_counts = sp.csr_matrix(counts)
+
+adata = ad.AnnData(
+    X=sparse_counts,
+    obs=pd.DataFrame({"condition": conditions, "replicate": np.random.choice(["R1", "R2"], size=n_cells)}, index=cells),
+    var=pd.DataFrame({"gene_symbols": genes}, index=genes)
+)
+adata.var_names_make_unique()
+
+print(f"  ✓ Created synthetic dataset: {adata.n_obs} cells × {adata.n_vars} genes")
+
+# Step 1: QC metrics
+adata.var['mt'] = adata.var_names.str.startswith("mt-")
+sc.pp.calculate_qc_metrics(adata, qc_vars=['mt'], percent_top=None, log1p=False, inplace=True)
+adata = adata[adata.obs['pct_counts_mt'] <= 25.0, :].copy()
+sc.pp.filter_genes(adata, min_cells=3)
+print(f"  ✓ QC filter complete: {adata.n_obs} cells retained")
+
+# Step 2: Normalization and log-transform
+adata.layers["counts"] = adata.X.copy()
+sc.pp.normalize_total(adata, target_sum=1e4)
+sc.pp.log1p(adata)
+
+# Step 3: Embeddings and clustering
+sc.pp.pca(adata, n_comps=15)
+sc.pp.neighbors(adata, n_neighbors=10, n_pcs=10)
+sc.tl.leiden(adata, resolution=0.5, key_added="leiden_0.5")
+print(f"  ✓ Leiden clustering identified {adata.obs['leiden_0.5'].nunique()} clusters")
+
+# Step 4: Synthetic developmental potency score (mock CytoTRACE2)
+# GCS proxy: number of genes expressed per cell
+gcs = np.asarray((adata.layers["counts"] > 0).sum(axis=1)).flatten()
+adata.obs["CytoTRACE2_Score"] = (gcs - gcs.min()) / (gcs.max() - gcs.min() + 1e-6)
+print(f"  ✓ Potency scoring calculated (mean: {adata.obs['CytoTRACE2_Score'].mean():.3f})")
+
+# Step 5: Differential expression (Wilcoxon rank-sum)
+sc.tl.rank_genes_groups(adata, groupby="condition", reference="WT_B_cells", method="wilcoxon")
+de_df = sc.get.rank_genes_groups_df(adata, group="Malignant")
+top_gene = de_df.iloc[0]["names"]
+print("  ✓ Wilcoxon differential expression test complete")
+
+# Save outputs to transient directory
+out_dir = Path("tmp/smoke_test_output")
+out_dir.mkdir(parents=True, exist_ok=True)
+adata.write_h5ad(out_dir / "smoke_test_processed.h5ad")
+de_df.to_csv(out_dir / "smoke_test_de_results.csv", index=False)
+print(f"  ✓ Output successfully written to {out_dir}/")
+print("=" * 65)
+print("  Smoke test PASSED successfully!")
+print("=" * 65)
+__EOF_run_smoke_test_py__
+
+echo "  Extracted 27 scripts (26 analysis scripts + 1 smoke test)."
 echo ""
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -16022,35 +16226,150 @@ echo ""
 # ─────────────────────────────────────────────────────────────────────────────
 echo "  Patching paths in extracted scripts..."
 
-# Escape paths for sed (handle slashes)
-_esc() { printf '%s\n' "$1" | sed 's/[&/\]/\\&/g'; }
+python3 -c '
+import sys, pathlib
+scripts = pathlib.Path(sys.argv[1])
+basedir = sys.argv[2]
+cellbender = sys.argv[3]
+dlbcl = sys.argv[4]
+tonsil = sys.argv[5]
+gf = sys.argv[6]
+fastq = sys.argv[7]
+ref = sys.argv[8]
+bin_cr = sys.argv[9]
+for p in list(scripts.glob("*.py")) + list(scripts.glob("*.sh")) + list(scripts.glob("*.R")):
+    txt = p.read_text()
+    txt = txt.replace("__BASEDIR__", basedir)
+    txt = txt.replace("__CELLBENDER_DIR__", cellbender)
+    txt = txt.replace("__DLBCL_DIR__", dlbcl)
+    txt = txt.replace("__TONSIL_DIR__", tonsil)
+    txt = txt.replace("__GENEFORMER_MODEL_DIR__", gf)
+    txt = txt.replace("__FASTQ_DATA_ROOT__", fastq)
+    txt = txt.replace("__CELLRANGER_REF__", ref)
+    txt = txt.replace("__CELLRANGER_BIN__", bin_cr)
+    p.write_text(txt)
+' "${SCRIPTS}" "${BASEDIR}" "${CELLBENDER_DIR}" "${DLBCL_DIR}" "${TONSIL_DIR}" "${GENEFORMER_MODEL_DIR}" "${FASTQ_DATA_ROOT}" "${CELLRANGER_REF}" "${CELLRANGER_BIN}"
 
-for f in "${SCRIPTS}"/*.py "${SCRIPTS}"/*.sh "${SCRIPTS}"/*.R; do
-    [[ -f "$f" ]] || continue
-    sed -i \
-        -e "s|__BASEDIR__|$(_esc "${BASEDIR}")|g" \
-        -e "s|__CELLBENDER_DIR__|$(_esc "${CELLBENDER_DIR}")|g" \
-        -e "s|__DLBCL_DIR__|$(_esc "${DLBCL_DIR}")|g" \
-        -e "s|__TONSIL_DIR__|$(_esc "${TONSIL_DIR}")|g" \
-        -e "s|__GENEFORMER_MODEL_DIR__|$(_esc "${GENEFORMER_MODEL_DIR}")|g" \
-        -e "s|__FASTQ_DATA_ROOT__|$(_esc "${FASTQ_DATA_ROOT}")|g" \
-        -e "s|__CELLRANGER_REF__|$(_esc "${CELLRANGER_REF}")|g" \
-        -e "s|__CELLRANGER_BIN__|$(_esc "${CELLRANGER_BIN}")|g" \
-        "$f"
-done
-chmod +x "${SCRIPTS}"/*.sh
+chmod +x "${SCRIPTS}"/*.sh 2>/dev/null || true
 
 echo "  ✓ All paths configured."
 echo ""
+else
+    echo "  [Info] Scripts already present in ${SCRIPTS} (skipping re-extraction; use --force-extract to overwrite)."
+    echo ""
+fi
+
+if [[ "$RUN_MODE" == "extract-only" ]]; then
+    echo "Scripts extraction complete."
+    exit 0
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STEP 3: Pipeline execution
+# STEP 3: Pre-flight input validation (for --run mode)
+# ─────────────────────────────────────────────────────────────────────────────
+check_stage_data() {
+    local stage="$1"
+    if [[ "$RUN_MODE" != "run" || "$SKIP_DATA_CHECK" == "true" ]]; then
+        return 0
+    fi
+    case "$stage" in
+        1)
+            local count=0
+            if [[ -d "${CELLBENDER_DIR}" ]]; then
+                count=$(find "${CELLBENDER_DIR}" -maxdepth 2 -name "*.h5" 2>/dev/null | wc -l)
+            fi
+            if [[ "$count" -eq 0 ]]; then
+                echo "============================================================"
+                echo "  ⚠️  Input Data Notice for Stage 1"
+                echo "============================================================"
+                echo "  No .h5 count matrices found in:"
+                echo "    ${CELLBENDER_DIR}"
+                echo ""
+                echo "  Stage 1 requires CellBender-filtered mouse scRNA-seq matrices."
+                echo "  Please download the dataset from GEO (accession: GSE332767)"
+                echo "  and deposit into: ${CELLBENDER_DIR}/"
+                echo "  (Refer to data/DATA_MANIFEST.md for accessions and file layout)."
+                echo ""
+                echo "  Options:"
+                echo "    - Run synthetic smoke test:  bash MasterAnalysis.sh --smoke-test"
+                echo "    - Bypass data check:         bash MasterAnalysis.sh --run --stage 1 --skip-data-check"
+                echo "============================================================"
+                exit 1
+            fi
+            ;;
+        2)
+            local count=0
+            if [[ -d "${TONSIL_DIR}" ]]; then
+                count=$(find "${TONSIL_DIR}" -maxdepth 2 -name "*.h5ad" 2>/dev/null | wc -l)
+            fi
+            if [[ "$count" -eq 0 && ! -d "${GENEFORMER_MODEL_DIR}" ]]; then
+                echo "============================================================"
+                echo "  ⚠️  Input Data Notice for Stage 2"
+                echo "============================================================"
+                echo "  No tonsil reference data found in:"
+                echo "    ${TONSIL_DIR}"
+                echo "  Please deposit tonsil reference H5ADs (see data/DATA_MANIFEST.md)."
+                echo "============================================================"
+                exit 1
+            fi
+            ;;
+        3)
+            local count=0
+            if [[ -d "${DLBCL_DIR}" ]]; then
+                count=$(find "${DLBCL_DIR}" -maxdepth 2 -name "*.h5ad" 2>/dev/null | wc -l)
+            fi
+            if [[ "$count" -eq 0 ]]; then
+                echo "============================================================"
+                echo "  ⚠️  Input Data Notice for Stage 3"
+                echo "============================================================"
+                echo "  No human DLBCL reference data found in:"
+                echo "    ${DLBCL_DIR}"
+                echo "  Please deposit Roider et al. / GSE182434 H5ADs (see data/DATA_MANIFEST.md)."
+                echo "============================================================"
+                exit 1
+            fi
+            ;;
+    esac
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STEP 4: Pipeline execution
 # ─────────────────────────────────────────────────────────────────────────────
 
-run_py()  { if [[ "$RUN_MODE" == "--run" ]]; then python3 "$@"; else echo "    → python3 $*"; fi; }
-run_R()   { if [[ "$RUN_MODE" == "--run" ]]; then Rscript "$@"; else echo "    → Rscript $*"; fi; }
+run_py() {
+    local script="$1"
+    shift
+    if [[ "$RUN_MODE" == "run" ]]; then
+        echo "    [Executing] ${PYTHON_BIN} ${script} $*"
+        "${PYTHON_BIN}" "${script}" "$@"
+    else
+        echo "    → ${PYTHON_BIN} ${script} $*"
+    fi
+}
 
-if [[ "$RUN_MODE" != "--run" ]]; then
+run_gf_py() {
+    local script="$1"
+    shift
+    if [[ "$RUN_MODE" == "run" ]]; then
+        echo "    [Executing] ${GENEFORMER_PYTHON} ${script} $*"
+        "${GENEFORMER_PYTHON}" "${script}" "$@"
+    else
+        echo "    → ${GENEFORMER_PYTHON} ${script} $*"
+    fi
+}
+
+run_R() {
+    local script="$1"
+    shift
+    if [[ "$RUN_MODE" == "run" ]]; then
+        echo "    [Executing] Rscript ${script} $*"
+        Rscript "${script}" "$@"
+    else
+        echo "    → Rscript ${script} $*"
+    fi
+}
+
+if [[ "$RUN_MODE" != "run" ]]; then
     echo "╔═══════════════════════════════════════════════════════════════╗"
     echo "║  DRY-RUN: Showing execution order only.                     ║"
     echo "║  To execute:  bash MasterAnalysis.sh --run                  ║"
@@ -16059,15 +16378,19 @@ if [[ "$RUN_MODE" != "--run" ]]; then
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════
+if [[ "$TARGET_STAGE" == "all" || "$TARGET_STAGE" == "0" ]]; then
 echo "═══ STAGE 0: Cell Ranger alignment ═══"
 echo "  cellranger_shabanas_gex.sh"
 echo "  Requires: Cell Ranger 9.0.1 + GRCm39 reference genome."
 echo "  Run CellBender on Cell Ranger output before proceeding to Stage 1."
-echo "  (Not executed automatically — run manually if needed)"
+echo "  (Manual stage — see scripts/cellranger_shabanas_gex.sh)"
 echo ""
+fi
 
 # ═══════════════════════════════════════════════════════════════════════════
+if [[ "$TARGET_STAGE" == "all" || "$TARGET_STAGE" == "1" ]]; then
 echo "═══ STAGE 1: Mouse scVI + CytoTRACE2 integration ═══"
+check_stage_data 1
 echo "  [1a] scVI integration, QC, doublet removal, CytoTRACE2"
 run_py "${SCRIPTS}/mouse_scvi_cytotrace2_cellbender.py"
 echo "  [1b] Downstream violin/UMAP plots"
@@ -16086,24 +16409,30 @@ run_py "${SCRIPTS}/gsea_umap_ppargc1a_B.py"
 echo "  [1h] Highlight Leiden clusters 4 & 6"
 run_py "${SCRIPTS}/plot_umap_highlight_clusters_4_6.py"
 echo ""
+fi
 
 # ═══════════════════════════════════════════════════════════════════════════
+if [[ "$TARGET_STAGE" == "all" || "$TARGET_STAGE" == "2" ]]; then
 echo "═══ STAGE 2: Geneformer training & prediction (mouse) ═══"
-echo "  NOTE: Requires Geneformer conda environment"
+check_stage_data 2
+echo "  Using Geneformer environment: ${GENEFORMER_PYTHON}"
 echo "  [2a] Fine-tune Geneformer on tonsil atlas (48-class)"
-run_py "${SCRIPTS}/train_geneformer_tonsil_multi.py"
+run_gf_py "${SCRIPTS}/train_geneformer_tonsil_multi.py"
 echo "  [2b] Predict cell types on mouse scVI object"
-run_py "${SCRIPTS}/geneformer_predict_and_plot_manuscript.py"
+run_gf_py "${SCRIPTS}/geneformer_predict_and_plot_manuscript.py"
 echo ""
+fi
 
 # ═══════════════════════════════════════════════════════════════════════════
+if [[ "$TARGET_STAGE" == "all" || "$TARGET_STAGE" == "3" ]]; then
 echo "═══ STAGE 3: Cross-species integration ═══"
-echo "  [3a] scVI: human DLBCL + mouse malignant + tonsil GC B cells"
+check_stage_data 3
+echo "  [3a] scVI: human DLBCL + mouse malignant + tonsil B/plasma cells"
 run_py "${SCRIPTS}/scvi_human_dlbcl_mouse_malignant_integration.py"
 echo "  [3b] CytoTRACE2 on integrated object"
 run_py "${SCRIPTS}/cytotrace2_dlbcl_mouse_tonsil.py"
 echo "  [3c] Geneformer prediction on integrated object"
-run_py "${SCRIPTS}/geneformer_predict_dlbcl_mouse_tonsil.py"
+run_gf_py "${SCRIPTS}/geneformer_predict_dlbcl_mouse_tonsil.py"
 echo "  [3d] Downstream plots (violin, UMAP by species/disease)"
 run_py "${SCRIPTS}/downstream_plots_human_mouse_integration.py"
 echo "  [3e] CytoTRACE2 on scVI UMAP"
@@ -16117,8 +16446,10 @@ run_py "${SCRIPTS}/plot_umap_highlight_mouse_clusters_4_6.py"
 echo "  [3i] Convert to Seurat v5 .rds"
 run_R  "${SCRIPTS}/convert_human_mouse_integration_to_seurat5.R"
 echo ""
+fi
 
 # ═══════════════════════════════════════════════════════════════════════════
+if [[ "$TARGET_STAGE" == "all" || "$TARGET_STAGE" == "4" ]]; then
 echo "═══ STAGE 4: Gene expression programs (heatmaps / GSEA) ═══"
 echo "  [4a] CytoTRACE2-ordered heatmaps + program detection + GSEA"
 run_py "${SCRIPTS}/ordering_cytotrace_2_mouse_geneformer.py"
@@ -16126,14 +16457,17 @@ echo "  [4b] Custom GSEA scatter plots"
 run_py "${SCRIPTS}/plot_gsea_custom.py"
 run_py "${SCRIPTS}/plot_gsea_custom_B.py"
 echo ""
+fi
 
 # ═══════════════════════════════════════════════════════════════════════════
+if [[ "$TARGET_STAGE" == "all" || "$TARGET_STAGE" == "5" ]]; then
 echo "═══ STAGE 5: Supplementary analyses ═══"
 echo "  [5a] PGC1α CytoTRACE2 trajectory"
 run_py "${SCRIPTS}/pgc1_cytotrace2_trajectory.py"
 echo "  [5b] Wilcoxon rank-sum tests"
 run_py "${SCRIPTS}/wilcoxon_rank_mouse_integrated.py"
 echo ""
+fi
 
 # ═══════════════════════════════════════════════════════════════════════════
 echo "╔═══════════════════════════════════════════════════════════════╗"
@@ -16146,7 +16480,7 @@ echo "║  Stage 3  Cross-species integration          (9 scripts)   ║"
 echo "║  Stage 4  Heatmap programs + GSEA            (3 scripts)   ║"
 echo "║  Stage 5  Supplementary analyses             (2 scripts)   ║"
 echo "╠═══════════════════════════════════════════════════════════════╣"
-echo "║  26 scripts in ./scripts/                                   ║"
-echo "╚═══════════════════════════════════════════════════════════════╝"
+echo "║  27 scripts in ./scripts/ (26 analysis + 1 smoke test)      ║"
+echo "╚═══════════════════════════════════════════════════════════════╝" 
 echo ""
 echo "Done."
