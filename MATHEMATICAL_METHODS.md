@@ -1,6 +1,6 @@
 # Mathematical Methods and Analytical Formulations
 
-This document provides a concise, formal specification of the mathematical models, statistical formulations, and analytical assumptions implemented across the *Crebbp*-deficient aggressive B-cell lymphoma single-cell analysis pipeline.
+This document provides specification of the mathematical models, statistical formulations, and analytical assumptions implemented across the *Crebbp*-deficient aggressive B-cell lymphoma single-cell analysis pipeline.
 
 ---
 
@@ -67,7 +67,13 @@ $$
 
 ### 2.3 Library Size Normalization and Transformation
 
-For downstream visualization and correlation calculations, decontaminated counts are scaled by total library depth $L_c = \sum_g x_{cg}$ and log-transformed:
+For downstream visualization and correlation calculations, decontaminated counts are scaled by total library depth $L_c$:
+
+$$
+L_c = \sum_{g} x_{cg}
+$$
+
+and transformed via the natural logarithm:
 
 $$
 y_{cg} = \log\left(1 + 10^4 \cdot \frac{x_{cg}}{\max(L_c, \varepsilon)}\right)
@@ -87,7 +93,13 @@ To prevent technical artifacts and non-malignant lineage dynamics from confoundi
 - Variable immunoglobulin chains (`Ighv`, `Igkv`, `Iglv`, `IGHV`, `IGKV`, `IGLV`)
 - T-cell receptor chains (`Trav`, `Trbv`, `Trgv`, `Trdv`, `Trac`, `Trbc`, `Trgc`, `Trdc`)
 
-The retained HVG set $\mathcal{H} = \mathcal{G}_{\mathrm{HVG}} \setminus \mathcal{M}_{\mathrm{conf}}$ provides the input feature space for latent representation learning.
+The retained HVG feature space:
+
+$$
+\mathcal{H} = \mathcal{G}_{\mathrm{HVG}} \setminus \mathcal{M}_{\mathrm{conf}}
+$$
+
+provides the input space for latent representation learning.
 
 ---
 
@@ -118,11 +130,11 @@ where:
 - $L_c$ is the observed library depth factor.
 - $b_c$ is the batch/library covariate (`sample_id`).
 - $\mathbf{u}_c$ represents observed biological covariates, including experimental condition and continuous cell-cycle scores ($S$ and $G_2/M$).
-- $\theta_{g,b_c} > 0$ denotes gene- and batch-specific inverse dispersion.
+- $\theta_{g,b} > 0$ denotes gene- and batch-specific inverse dispersion.
 
 ### 3.2 Variational Inference and Optimization
 
-The posterior distribution over latent variables $p(\mathbf{z}_c \mid \mathbf{x}_c, b_c, \mathbf{u}_c)$ is approximated using a variational inference encoder network:
+The posterior distribution over latent variables is approximated using a variational inference encoder network:
 
 $$
 q_\phi(\mathbf{z}_c \mid \mathbf{x}_c, b_c, \mathbf{u}_c) = \mathcal{N}\left(\boldsymbol{\mu}_\phi(\mathbf{x}_c), \mathrm{diag}\left(\boldsymbol{\sigma}_\phi^2(\mathbf{x}_c)\right)\right)
@@ -134,7 +146,11 @@ $$
 \mathcal{L}_{\mathrm{ELBO}}(\theta, \phi) = \sum_{c} \left( \mathbb{E}_{q_\phi}\left[ \log p_\theta(\mathbf{x}_c \mid \mathbf{z}_c, L_c, b_c, \mathbf{u}_c) \right] - D_{\mathrm{KL}}\left( q_\phi(\mathbf{z}_c \mid \mathbf{x}_c, b_c, \mathbf{u}_c) \,\|\, p(\mathbf{z}_c) \right) \right)
 $$
 
-with isotropic Gaussian prior $p(\mathbf{z}_c) = \mathcal{N}(\mathbf{0}, \mathbf{I}_{96})$.
+assuming a standard isotropic Gaussian prior on the 96-dimensional latent space:
+
+$$
+p(\mathbf{z}_c) = \mathcal{N}(\mathbf{0}, \mathbf{I})
+$$
 
 **Architectural hyperparameters:**
 - Latent dimensionality: $\dim(\mathbf{z}) = 96$
@@ -145,7 +161,13 @@ with isotropic Gaussian prior $p(\mathbf{z}_c) = \mathcal{N}(\mathbf{0}, \mathbf
 
 ### 3.3 Graph Topology and Leiden Clustering
 
-The low-dimensional latent coordinates $\mathbf{Z} = [\mathbf{z}_1, \ldots, \mathbf{z}_N]^{\mathsf{T}}$ define cell-cell similarity. A $k$-nearest-neighbor affinity graph ($k=30$) is constructed using Euclidean distances in $\mathbb{R}^{96}$:
+The low-dimensional latent coordinates:
+
+$$
+\mathbf{Z} = [\mathbf{z}_1, \ldots, \mathbf{z}_N]^{\mathsf{T}}
+$$
+
+define cell-cell similarity across the cohort. A $k$-nearest-neighbor affinity graph ($k=30$) is constructed using Euclidean distances in $\mathbb{R}^{96}$:
 
 $$
 d_{\mathrm{scVI}}(c_i, c_j) = \|\mathbf{z}_{c_i} - \mathbf{z}_{c_j}\|_2
@@ -207,7 +229,13 @@ $$
 \mathbf{S}^* = (1 - \alpha)\left(\mathbf{I} - \alpha \mathbf{P}\right)^{-1} \mathbf{S}^{(0)}
 $$
 
-where $\mathbf{P} = \mathbf{D}^{-1}\mathbf{W}$ represents the row-stochastic random-walk transition matrix with degree matrix $D_{ii} = \sum_j W_{ij}$, and $\alpha = 0.9$ is the Markov restart parameter.
+where $\mathbf{P} = \mathbf{D}^{-1}\mathbf{W}$ represents the row-stochastic random-walk transition matrix with degree matrix:
+
+$$
+D_{ii} = \sum_{j} W_{ij}
+$$
+
+and restart parameter $\alpha = 0.9$.
 
 ### 5.3 Directionality and Differentiation Pseudotime
 
@@ -217,7 +245,7 @@ $$
 \tau_c = 1 - q_c
 $$
 
-tracking progressive maturation from undifferentiated stem-like B-cell states ($\tau_c \to 0$, $q_c \to 1$) toward terminally differentiated effector states ($\tau_c \to 1$, $q_c \to 0$).
+tracking progressive maturation from undifferentiated stem-like B-cell states (potency $q \to 1$, pseudotime $\tau \to 0$) toward terminally differentiated effector states (potency $q \to 0$, pseudotime $\tau \to 1$).
 
 ---
 
@@ -319,7 +347,7 @@ where $\mathbf{M}$ is the row-normalized adaptive Gaussian kernel transition mat
 
 Cells are ordered along ascending CytoTRACE2 potency $q_c$. Expression matrices are smoothed across cell rank using a Gaussian kernel ($\sigma = 3.0$) and rolling-window averaging ($W = 100$ cells).
 
-For genes $g_1$ and $g_2$ with smoothed expression profiles $\mathbf{v}_1$ and $\mathbf{v}_2$, trajectory dissimilarity combines temporal shape with absolute expression amplitude:
+For genes $g_1$ and $g_2$ with smoothed expression profiles $\mathbf{v}(g_1)$ and $\mathbf{v}(g_2)$, trajectory dissimilarity combines temporal shape with absolute expression amplitude:
 
 $$
 D_{\mathrm{dual}}(g_1, g_2) = \alpha_{\mathrm{shape}} \cdot d_{\mathrm{shape}}(g_1, g_2) + (1 - \alpha_{\mathrm{shape}}) \cdot d_{\mathrm{amp}}(g_1, g_2)
@@ -337,7 +365,13 @@ $$
 yielding $d_{\mathrm{shape}} \in [0, 2]$.
 
 **Trajectory Amplitude Distance:**
-Euclidean distance is normalized by the empirical 95th percentile scale factor $S_{95} = \mathrm{Percentile}_{95}(d_{\mathrm{raw}})$:
+Euclidean distance is normalized by the empirical 95th percentile scale factor:
+
+$$
+S_{95} = \mathrm{Percentile}_{95}(d_{\mathrm{amp}})
+$$
+
+yielding the standardized amplitude metric:
 
 $$
 d_{\mathrm{amp}}(g_1, g_2) = \min\left(2.0, \quad 2.0 \cdot \frac{\|\mathbf{v}_1 - \mathbf{v}_2\|_2}{S_{95}}\right)
