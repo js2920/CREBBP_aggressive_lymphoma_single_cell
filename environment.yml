@@ -1,0 +1,28 @@
+name: crebbp_sc_pipeline
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - numpy>=1.23.0
+  - scipy>=1.10.0
+  - pandas>=2.0.0
+  - matplotlib>=3.7.0
+  - seaborn>=0.12.0
+  - scikit-learn>=1.2.0
+  - h5py>=3.8.0
+  - pytables
+  - pyyaml>=6.0
+  - tqdm
+  - pip:
+      - scanpy>=1.9.0,<=1.11.0
+      - scvi-tools>=1.0.0,<=1.2.0
+      - anndata>=0.9.0,<=0.11.4
+      - scrublet>=0.2.3
+      - cytotrace2_py>=1.1.0
+      - magic-impute>=3.0.0
+      - gseapy>=1.1.0
+      - mygene>=3.2.0
+      - torch>=2.0.0
