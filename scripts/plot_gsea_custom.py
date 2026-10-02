@@ -3,9 +3,9 @@
 Custom GSEA/Enrichr Scatter Plots
 =================================
 Generates publication-quality plots:
-- GSEA prerank plots (NES on Y-axis) - captures OXPHOS!
+- GSEA prerank plots (NES on Y-axis)
 - Enrichr plots (Combined Score on Y-axis)
-- Both with clean aesthetics
+
 
 Author: Generated for CytoTRACE2 analysis
 """
