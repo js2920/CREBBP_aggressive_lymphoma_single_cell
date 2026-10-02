@@ -12,8 +12,6 @@ Features:
 - Correlation analysis for ALL genes with CytoTRACE2 score
 - Trajectory visualization for genes of interest
 
-Author: Generated script
-Date: 2024
 """
 
 import os
