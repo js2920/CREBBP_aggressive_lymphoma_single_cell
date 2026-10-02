@@ -7,8 +7,6 @@ Mouse scVI + CytoTRACE2 Analysis (CellBender Filtered Data)
 Loads CellBender-filtered h5 files, performs QC (MT% <= 10%), 
 doublet removal via Scrublet, scVI integration, and CytoTRACE2.
 
-Author: J
-Date: 2025-12-01
 """
 
 # ============================== SETUP ========================================
